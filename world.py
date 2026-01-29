@@ -1,6 +1,4 @@
-import arcade
 import random
-import math
 from constants import *
 from enemies import Monster, Spike
 from items import Gold, Heart, ExitFlag
@@ -13,31 +11,16 @@ class World:
         self.potions = arcade.SpriteList()
         self.monsters = arcade.SpriteList()
         self.traps = arcade.SpriteList()
+        self.background_decor = arcade.SpriteList()
         self.exit = None
-        self.bg_color = self.get_bg_color(level_num)
         self.moving_platform = None
         self.seed = random.randint(1, 10000)
         random.seed(self.seed + level_num * 1000)
         self.level_style = self.get_level_style(level_num)
         self.create()
 
-    def get_bg_color(self, num):
-        colors = [
-            arcade.color.DARK_SLATE_GRAY,
-            arcade.color.DARK_BLUE_GRAY,
-            arcade.color.DARK_GREEN,
-            arcade.color.DARK_VIOLET,
-            arcade.color.DARK_BROWN,
-            arcade.color.DARK_CYAN,
-            arcade.color.DARK_RED,
-            arcade.color.DARK_ORANGE,
-            arcade.color.DARK_MAGENTA,
-            arcade.color.DARK_GOLDENROD,
-        ]
-        return colors[(num - 1) % len(colors)]
-
     def get_level_style(self, num):
-        styles = ["normal", "cave", "castle", "forest", "ice"]
+        styles = ["normal", "cave", "castle"]
         return styles[(num - 1) % len(styles)]
 
     def get_ground_color(self):
@@ -53,9 +36,9 @@ class World:
             return arcade.color.WOOD_BROWN
 
     def position_free(self, x, y, taken, w=30, h=30, margin=10):
-        for px, py, pw, ph in taken:
-            if (abs(x - px) < (w / 2 + pw / 2 + margin) and
-                    abs(y - py) < (h / 2 + ph / 2 + margin)):
+        for pos in taken:
+            px, py, pw, ph = pos
+            if abs(x - px) < 100 and abs(y - py) < 100:
                 return False
         return True
 
@@ -64,10 +47,6 @@ class World:
             self.create_cave()
         elif self.level_style == "castle":
             self.create_castle()
-        elif self.level_style == "forest":
-            self.create_forest()
-        elif self.level_style == "ice":
-            self.create_ice()
         else:
             self.create_normal()
 
@@ -250,96 +229,152 @@ class World:
 
     def create_castle(self):
         random.seed(self.seed + self.level_num * 1000)
+
         for x in range(0, WORLD_WIDTH, TILE_SIZE):
             floor = arcade.Sprite()
             floor.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.DARK_GRAY)
             floor.center_x = x + TILE_SIZE // 2
             floor.center_y = TILE_SIZE // 2
             self.ground.append(floor)
-        wall_spots = []
-        wall_heights = []
-        wall_xs = []
-        for i, x in enumerate(range(300, WORLD_WIDTH - 300, 250)):
-            if i > 4:
-                break
-            height = random.randint(2, min(4, 2 + self.level_num // 3))
-            wall_xs.append(x)
-            wall_heights.append(height)
-            wall_parts = []
-            for y in range(1, height + 1):
-                wall = arcade.Sprite()
-                wall.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.GRAY)
-                wall.center_x = x
-                wall.center_y = TILE_SIZE // 2 + y * TILE_SIZE
-                self.ground.append(wall)
-                wall_parts.append(wall)
-                if y == height and random.random() < 0.4:
-                    monster = Monster(x, wall.center_y + 30)
-                    monster.platform_parts = wall_parts
-                    monster.platform_width = TILE_SIZE
-                    monster.start_x = x
-                    monster.speed = 0.8 + random.random() * 0.8
-                    monster.direction = 1
+
+        current_x = 200
+        current_y = 150
+
+        for i in range(3):
+            tile = arcade.Sprite()
+            tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.GRAY)
+            tile.center_x = current_x + i * TILE_SIZE
+            tile.center_y = current_y
+            self.ground.append(tile)
+
+        coin = Gold(current_x + TILE_SIZE, current_y + 45)
+        self.treasure.append(coin)
+
+        platforms_created = 0
+        max_platforms = 8 + self.level_num
+
+        while current_x < WORLD_WIDTH - 500 and platforms_created < max_platforms:
+            gap_width = random.randint(100, 200)
+            current_x += gap_width
+
+            height_change = random.choice([-TILE_SIZE, 0, TILE_SIZE, TILE_SIZE * 2])
+            if platforms_created % 3 == 0:
+                height_change = TILE_SIZE * 2
+            current_y = max(150, min(400, current_y + height_change))
+
+            platform_length = random.randint(2, 4)
+
+            for i in range(platform_length):
+                tile = arcade.Sprite()
+                tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.GRAY)
+                tile.center_x = current_x + i * TILE_SIZE
+                tile.center_y = current_y
+                self.ground.append(tile)
+                if i == platform_length // 2 and random.random() < 0.5:
+                    coin = Gold(tile.center_x, tile.center_y + 45)
+                    self.treasure.append(coin)
+
+            platforms_created += 1
+
+            if platforms_created > 2 and random.random() < 0.4:
+                monster_x = current_x + (platform_length * TILE_SIZE) // 2
+                monster_y = current_y + 30
+                monster = Monster(monster_x, monster_y)
+                monster.platform_parts = []
+                for i in range(platform_length):
+                    for tile in self.ground:
+                        if (abs(tile.center_x - (current_x + i * TILE_SIZE)) < 5 and
+                                abs(tile.center_y - current_y) < 5):
+                            monster.platform_parts.append(tile)
+                if monster.platform_parts:
+                    monster.platform_width = len(monster.platform_parts) * TILE_SIZE
+                    monster.start_x = current_x + (platform_length * TILE_SIZE) // 2
+                    monster.speed = 1.0 + random.random() * 0.8
+                    monster.direction = 1 if random.random() > 0.5 else -1
                     self.monsters.append(monster)
-            wall_spots.append((x, TILE_SIZE // 2 + height * TILE_SIZE))
-        for i, (x, height_y) in enumerate(wall_spots):
-            if i > 0:
-                prev_x, prev_height_y = wall_spots[i-1]
-                platform_x = x - 100
-                platform_y = TILE_SIZE * 2
-                step_count = wall_heights[i]
-                for step in range(step_count):
-                    step_y = platform_y + step * TILE_SIZE
-                    for j in range(3):
-                        tile = arcade.Sprite()
-                        tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.WOOD_BROWN)
-                        tile.center_x = platform_x + j * TILE_SIZE
-                        tile.center_y = step_y
-                        self.ground.append(tile)
-                        if j == 1 and random.random() < 0.5:
-                            coin = Gold(tile.center_x, tile.center_y + 45)
-                            self.treasure.append(coin)
-        for i in range(len(wall_spots) - 1):
-            x1, y1 = wall_spots[i]
-            x2, y2 = wall_spots[i + 1]
-            if abs(y1 - y2) < TILE_SIZE * 1.5:
-                bridge_y = (y1 + y2) // 2
-                bridge_len = int(abs(x2 - x1) // TILE_SIZE)
-                for j in range(bridge_len):
+
+            current_x += platform_length * TILE_SIZE + random.randint(50, 100)
+
+        for i in range(random.randint(2, 3)):
+            fly_x = 500 + i * 300
+            fly_y = 250 + random.randint(-50, 50)
+            fly_length = random.randint(2, 3)
+
+            if i == 1:
+                self.moving_platform = arcade.SpriteSolidColor(
+                    fly_length * TILE_SIZE,
+                    TILE_SIZE // 2,
+                    arcade.color.DARK_GRAY
+                )
+                self.moving_platform.center_x = fly_x
+                self.moving_platform.center_y = fly_y
+                self.moving_platform.move_speed = 2.0
+                self.moving_platform.direction = 1
+                self.moving_platform.left_bound = fly_x - 100
+                self.moving_platform.right_bound = fly_x + 100
+                self.ground.append(self.moving_platform)
+
+                coin = Gold(fly_x, fly_y + 45)
+                self.treasure.append(coin)
+            else:
+                for j in range(fly_length):
                     tile = arcade.Sprite()
-                    tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.WOOD_BROWN)
-                    tile.center_x = min(x1, x2) + j * TILE_SIZE + TILE_SIZE // 2
-                    tile.center_y = bridge_y
+                    tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.LIGHT_GRAY)
+                    tile.center_x = fly_x + j * TILE_SIZE
+                    tile.center_y = fly_y
                     self.ground.append(tile)
-                    if j % 2 == 0:
-                        coin = Gold(tile.center_x, tile.center_y + 45)
-                        self.treasure.append(coin)
-                        if random.random() < 0.3:
-                            monster = Monster(tile.center_x, tile.center_y + 30)
-                            monster.platform_parts = [tile]
-                            monster.platform_width = TILE_SIZE
-                            monster.start_x = tile.center_x
-                            monster.speed = 1.0 + random.random() * 0.8
-                            monster.direction = 1 if random.random() > 0.5 else -1
-                            self.monsters.append(monster)
-        exit_x = WORLD_WIDTH - 200
+
+                if random.random() < 0.7:
+                    coin = Gold(fly_x + (fly_length * TILE_SIZE) // 2, fly_y + 45)
+                    self.treasure.append(coin)
+
+        for i in range(3 + self.level_num):
+            spike_x = random.randint(300, WORLD_WIDTH - 400)
+            on_floor = False
+            for tile in self.ground:
+                if abs(tile.center_x - spike_x) < 50 and tile.center_y < 100:
+                    on_floor = True
+                    break
+            if on_floor:
+                spike = Spike(spike_x, 40)
+                self.traps.append(spike)
+
+        heart_x = WORLD_WIDTH // 2
+        heart_y = 200
+        heart = Heart(heart_x, heart_y)
+        self.potions.append(heart)
+
+        exit_platform_length = 4
+        exit_x = WORLD_WIDTH - 300
         exit_y = 180
-        self.exit = ExitFlag(exit_x, exit_y)
 
-    def create_forest(self):
-        self.create_normal()
-        for tile in self.ground:
-            if tile.center_y > 100:
-                tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.DARK_GREEN)
-        if random.random() < 0.5:
-            heart = Heart(WORLD_WIDTH // 2, 200)
-            self.potions.append(heart)
+        for i in range(exit_platform_length):
+            tile = arcade.Sprite()
+            tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.GOLD)
+            tile.center_x = exit_x + i * TILE_SIZE
+            tile.center_y = exit_y
+            self.ground.append(tile)
 
-    def create_ice(self):
-        self.create_normal()
-        for tile in self.ground:
-            if tile.center_y > 100:
-                tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.LIGHT_BLUE)
+        final_coin = Gold(exit_x + (exit_platform_length * TILE_SIZE) // 2, exit_y + 60)
+        self.treasure.append(final_coin)
+
+        self.exit = ExitFlag(exit_x + (exit_platform_length * TILE_SIZE) // 2, exit_y + 120)
+
+        last_platform_end = current_x
+        last_platform_y = current_y
+
+        if last_platform_end < exit_x - 200:
+            steps = 3
+            for step in range(steps):
+                step_x = last_platform_end + step * 150
+                step_y = last_platform_y - step * 40
+
+                for i in range(2):
+                    tile = arcade.Sprite()
+                    tile.texture = arcade.make_soft_square_texture(TILE_SIZE, arcade.color.GRAY)
+                    tile.center_x = step_x + i * TILE_SIZE
+                    tile.center_y = step_y
+                    self.ground.append(tile)
 
     def update_moving(self, delta):
         if self.moving_platform:
@@ -351,13 +386,12 @@ class World:
                 self.moving_platform.center_x = self.moving_platform.left_bound
                 self.moving_platform.direction = 1
         for monster in self.monsters:
-            if hasattr(monster, 'platform_parts') and monster.platform_parts:
-                left = min(p.center_x for p in monster.platform_parts) - monster.platform_parts[0].width / 2 + 30
-                right = max(p.center_x for p in monster.platform_parts) + monster.platform_parts[0].width / 2 - 30
-                monster.center_x += monster.speed * monster.direction
-                if monster.center_x <= left:
-                    monster.center_x = left
-                    monster.direction = 1
-                elif monster.center_x >= right:
-                    monster.center_x = right
-                    monster.direction = -1
+            left = min(p.center_x for p in monster.platform_parts) - monster.platform_parts[0].width / 2 + 30
+            right = max(p.center_x for p in monster.platform_parts) + monster.platform_parts[0].width / 2 - 30
+            monster.center_x += monster.speed * monster.direction
+            if monster.center_x <= left:
+                monster.center_x = left
+                monster.direction = 1
+            elif monster.center_x >= right:
+                monster.center_x = right
+                monster.direction = -1
