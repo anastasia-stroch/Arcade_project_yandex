@@ -1,4 +1,4 @@
-import arcade
+
 from constants import *
 
 class Hero(arcade.Sprite):
@@ -36,7 +36,8 @@ class Hero(arcade.Sprite):
             self.speed_x = 0
         if self.invincible > 0:
             self.invincible -= delta
-            if int(self.invincible * 10) % 2 == 0:
+            blink_time = int(self.invincible * 5)
+            if blink_time % 2 == 0:
                 self.alpha = 150
             else:
                 self.alpha = 255
@@ -59,13 +60,13 @@ class Hero(arcade.Sprite):
         return False
 
     def get_hit(self, damage: int, push_x: float = 0, push_y: float = 8):
-        if self.invincible > 0:
-            return False
         self.health -= damage
         self.speed_x = push_x
         self.speed_y = push_y
         self.invincible = 1.5
-        self.lives = max(1, (self.health + 24) // 25)
+        self.lives = self.health // 25
+        if self.lives < 1:
+            self.lives = 1
         if self.health <= 0:
             self.lives -= 1
             if self.lives > 0:
