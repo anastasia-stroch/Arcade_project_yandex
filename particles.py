@@ -40,11 +40,6 @@ class ParticleSystem:
     def __init__(self):
         self.particles = arcade.SpriteList()
 
-    def make_explosion(self, x, y, count=20):
-        for _ in range(count):
-            p = Particle(x, y)
-            self.particles.append(p)
-
     def make_coin_effect(self, x, y):
         for _ in range(10):
             p = Particle(x, y)
