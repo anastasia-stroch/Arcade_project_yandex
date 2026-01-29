@@ -1,4 +1,3 @@
-import arcade
 import random
 from constants import *
 
@@ -27,20 +26,6 @@ class Spike(arcade.Sprite):
         self.center_x = x
         self.center_y = y + 10
         self.damage = TRAP_DAMAGE
-
-    def update(self, delta: float = 1 / 60):
-        pass
-
-class DeathHole(arcade.Sprite):
-    def __init__(self, x: float, y: float, w: float = 100, h: float = 100):
-        texture = arcade.make_soft_square_texture(max(int(w), int(h)), arcade.color.BLACK)
-        super().__init__(texture)
-        self.scale = 1.0
-        self.center_x = x
-        self.center_y = y
-        self.width = w
-        self.height = h
-        self.damage = 999
 
     def update(self, delta: float = 1 / 60):
         pass
