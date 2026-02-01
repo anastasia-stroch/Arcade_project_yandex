@@ -1,30 +1,35 @@
+import random
 import arcade
 from constants import *
 from hero import Hero
 from world import World
-import random
 from database import db
 
 
 class MyGame(arcade.Window):
     def __init__(self):
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, "Рыцарь в замке")
-        self.screen = "menu"
-        self.level = 1
+
+        self.current_screen = "menu"
+        self.current_level = 1
         self.max_levels = 10
+
         self.hero = None
+        self.hero_group = None
         self.world = None
-        self.coins = 0
-        self.score = 0
+
+        self.coins_saved = 0
+        self.score_saved = 0
         self.camera_x = 0
         self.camera_y = 0
         self.key_left = False
         self.key_right = False
         self.key_up = False
         self.can_move = True
-        self.blink = 0
-        self.menu_selected = 0
-        self.menu_options = ["НАЧАТЬ", "РЕКОРДЫ", "СТАТИСТИКА", "ВЫЙТИ"]
+        self.blink_timer = 0
+
+        self.menu_choice = 0
+        self.menu_items = ["НАЧАТЬ", "РЕКОРДЫ", "СТАТИСТИКА", "ВЫЙТИ"]
 
         self.show_scores = False
         self.show_stats = False
@@ -33,54 +38,64 @@ class MyGame(arcade.Window):
         self.letters = list("АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ1234567890 ")
         self.letter_index = 0
 
+        self.background_list = None
+        self.music = None
+        self.hit_sound = None
+
         try:
             self.music = arcade.load_sound("music.mp3")
             arcade.play_sound(self.music, volume=0.2, loop=True)
             self.hit_sound = arcade.load_sound("hit.mp3")
         except:
-            ...
+            pass
 
         stats = db.get_my_stats()
-        if stats:
-            self.max_levels = max(10, stats['best_level'])
+        if stats and stats['best_level'] > self.max_levels:
+            self.max_levels = stats['best_level']
 
-    def start_game(self):
+    def init_game(self):
         self.key_left = False
         self.key_right = False
         self.key_up = False
         self.hero = Hero()
-        self.hero.coins = self.coins
-        self.hero.score = self.score
-        self.world = World(self.level)
-        self.screen = "game"
+        self.hero.coins = self.coins_saved
+        self.hero.score = self.score_saved
+        self.hero_group = arcade.SpriteList()
+        self.hero_group.append(self.hero)
+        self.world = World(self.current_level)
+        self.current_screen = "game"
         self.can_move = True
         self.hero.center_x = 100
         self.hero.center_y = 300
         self.camera_x = 0
         self.camera_y = 0
-        self.backgrounds = arcade.SpriteList()
 
-        bg_choice = random.choice(["tileset1", "tileset"])
+        self.background_list = arcade.SpriteList()
+        random_num = random.randint(0, 3)
         try:
-            bg = arcade.load_texture(f"textures/{bg_choice}.png")
+            if random_num == 0:
+                bg_texture = arcade.load_texture("tileset.png")
+            elif random_num == 1:
+                bg_texture = arcade.load_texture("tileset1.png")
+            elif random_num == 2:
+                bg_texture = arcade.load_texture("tileset2.png")
+            elif random_num == 3:
+                bg_texture = arcade.load_texture("tileset3.png")
         except:
-            try:
-                bg = arcade.load_texture(f"{bg_choice}.png")
-            except:
-                bg = arcade.make_soft_square_texture(64, arcade.color.DARK_BROWN)
+            bg_texture = arcade.make_soft_square_texture(64, arcade.color.DARK_BROWN)
 
-        w = bg.width
-        h = bg.height
-        tiles_x = int(WORLD_WIDTH / w) + 2
-        tiles_y = int(WORLD_HEIGHT / h) + 2
-
+        texture_width = bg_texture.width
+        texture_height = bg_texture.height
+        tiles_x = int(WORLD_WIDTH / texture_width) + 2
+        tiles_y = int(WORLD_HEIGHT / texture_height) + 2
         for x in range(tiles_x):
             for y in range(tiles_y):
-                tile = arcade.Sprite()
-                tile.texture = bg
-                tile.center_x = x * w + w / 2
-                tile.center_y = y * h + h / 2
-                self.backgrounds.append(tile)
+                bg_tile = arcade.Sprite()
+                bg_tile.texture = bg_texture
+                bg_tile.center_x = x * texture_width + texture_width / 2
+                bg_tile.center_y = y * texture_height + texture_height / 2
+                bg_tile.scale = 1.0
+                self.background_list.append(bg_tile)
 
     def move_camera(self):
         target_x = self.hero.center_x - SCREEN_WIDTH / 2
@@ -93,7 +108,7 @@ class MyGame(arcade.Window):
     def on_draw(self):
         self.clear()
 
-        if self.screen == "menu":
+        if self.current_screen == "menu":
             if self.show_scores:
                 self.draw_scores()
             elif self.show_stats:
@@ -103,85 +118,169 @@ class MyGame(arcade.Window):
             else:
                 self.draw_menu()
             return
-        elif self.screen == "choose_level":
-            self.draw_levels()
+        elif self.current_screen == "choose_level":
+            self.draw_level_choice()
             return
 
-        if self.backgrounds:
-            self.backgrounds.draw()
+        if self.background_list:
+            self.background_list.draw()
 
-        def draw_list(sprites):
-            for s in sprites:
-                s.center_x -= self.camera_x
-                s.center_y -= self.camera_y
-            sprites.draw()
-            for s in sprites:
-                s.center_x += self.camera_x
-                s.center_y += self.camera_y
+        def draw_sprites(sprite_list):
+            for sprite in sprite_list:
+                sprite.center_x -= self.camera_x
+                sprite.center_y -= self.camera_y
+            sprite_list.draw()
+            for sprite in sprite_list:
+                sprite.center_x += self.camera_x
+                sprite.center_y += self.camera_y
 
-        draw_list(self.world.ground)
-        draw_list(self.world.traps)
-        draw_list(self.world.monsters)
-        draw_list(self.world.treasure)
-        draw_list(self.world.potions)
+        if self.world:
+            draw_sprites(self.world.ground)
+            draw_sprites(self.world.traps)
+            draw_sprites(self.world.monsters)
+            draw_sprites(self.world.treasure)
+            draw_sprites(self.world.potions)
+            if self.world.exit:
+                flag = self.world.exit
+                flag.center_x -= self.camera_x
+                flag.center_y -= self.camera_y
+                temp_list = arcade.SpriteList()
+                temp_list.append(flag)
+                temp_list.draw()
+                flag.center_x += self.camera_x
+                flag.center_y += self.camera_y
 
-        if self.world.exit:
-            flag = self.world.exit
-            flag.center_x -= self.camera_x
-            flag.center_y -= self.camera_y
-            arcade.SpriteList().append(flag).draw()
-            flag.center_x += self.camera_x
-            flag.center_y += self.camera_y
+        if self.hero:
+            self.hero.center_x -= self.camera_x
+            self.hero.center_y -= self.camera_y
+            if self.hero_group:
+                self.hero_group.draw()
+            else:
+                hero_list = arcade.SpriteList()
+                hero_list.append(self.hero)
+                hero_list.draw()
+            self.hero.center_x += self.camera_x
+            self.hero.center_y += self.camera_y
 
-        self.hero.center_x -= self.camera_x
-        self.hero.center_y -= self.camera_y
-        arcade.SpriteList().append(self.hero).draw()
-        self.hero.center_x += self.camera_x
-        self.hero.center_y += self.camera_y
+            self.draw_stats_info()
 
-        self.draw_info()
-
-        if self.screen == "lose":
-            self.draw_lose()
-        elif self.screen == "win":
-            self.draw_win()
+        if self.current_screen == "lose":
+            self.draw_lose_screen()
+        elif self.current_screen == "win":
+            self.draw_win_screen()
 
     def draw_menu(self):
-        arcade.draw_lrbt_rectangle_filled(0, SCREEN_WIDTH, 0, SCREEN_HEIGHT, arcade.color.DARK_PASTEL_PURPLE)
-
-        castle_x = SCREEN_WIDTH // 2 - 200
-        castle_y = SCREEN_HEIGHT // 2 - 50
-        arcade.draw_lrbt_rectangle_filled(castle_x, castle_x + 400, castle_y, castle_y + 200, arcade.color.DARK_YELLOW)
-
-        tower_y = castle_y + 125
-        arcade.draw_lrbt_rectangle_filled(castle_x - 40, castle_x, tower_y - 125, tower_y + 125, arcade.color.GRAY)
-        arcade.draw_lrbt_rectangle_filled(castle_x + 400, castle_x + 440, tower_y - 125, tower_y + 125,
-                                          arcade.color.GRAY)
-
+        arcade.draw_lrbt_rectangle_filled(
+            0, SCREEN_WIDTH,
+            0, SCREEN_HEIGHT,
+            arcade.color.DARK_PASTEL_PURPLE
+        )
+        castle_w = 400
+        castle_h = 200
+        castle_x = SCREEN_WIDTH // 2 - castle_w // 2
+        castle_y = SCREEN_HEIGHT // 2 - castle_h // 2 + 100
+        arcade.draw_lrbt_rectangle_filled(
+            left=castle_x,
+            right=castle_x + castle_w,
+            bottom=castle_y,
+            top=castle_y + castle_h,
+            color=arcade.color.DARK_YELLOW
+        )
+        tower_w = 80
+        tower_h = 250
+        left_tower_x = castle_x - tower_w // 2
+        left_tower_y = castle_y + tower_h // 2
+        arcade.draw_lrbt_rectangle_filled(
+            left=left_tower_x - tower_w // 2,
+            right=left_tower_x + tower_w // 2,
+            bottom=left_tower_y - tower_h // 2,
+            top=left_tower_y + tower_h // 2,
+            color=arcade.color.GRAY
+        )
+        right_tower_x = castle_x + castle_w + tower_w // 2
+        arcade.draw_lrbt_rectangle_filled(
+            left=right_tower_x - tower_w // 2,
+            right=right_tower_x + tower_w // 2,
+            bottom=left_tower_y - tower_h // 2,
+            top=left_tower_y + tower_h // 2,
+            color=arcade.color.GRAY
+        )
+        window_w = 30
+        window_h = 40
         for i in range(4):
-            window_x = castle_x + (i + 1) * 80 + 20
-            window_y = castle_y + 100
-            arcade.draw_lrbt_rectangle_filled(window_x, window_x + 30, window_y - 20, window_y + 20,
-                                              arcade.color.YELLOW)
-
-        arcade.Text("ЗАМОК САМУРАЯ", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 150, arcade.color.GOLD, 64, bold=True,
-                    anchor_x="center").draw()
-        arcade.Text("Начни свое приключение!", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 220, arcade.color.LIGHT_GRAY, 28,
-                    anchor_x="center").draw()
-
-        for i, item in enumerate(self.menu_options):
-            color = arcade.color.GOLD if i == self.menu_selected else arcade.color.WHITE
-            size = 48 if i == self.menu_selected else 36
-            bold = i == self.menu_selected
-            arcade.Text(item, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - i * 60, color, size, bold=bold,
-                        anchor_x="center").draw()
-
-        if int(self.blink * 2) % 2 == 0:
-            arcade.Text("Стрелки ВВЕРХ/ВНИЗ для выбора, ENTER для подтверждения", SCREEN_WIDTH // 2, 100,
-                        arcade.color.LIGHT_GRAY, 22, anchor_x="center").draw()
-
-        arcade.Text("В игре: <- -> движение, SPACE прыжок", SCREEN_WIDTH // 2, 60, arcade.color.LIGHT_GRAY, 20,
-                    anchor_x="center").draw()
+            window_x = castle_x + (i + 1) * (castle_w // 5) - window_w // 2
+            window_y = castle_y + castle_h // 2 - window_h // 2
+            arcade.draw_lrbt_rectangle_filled(
+                left=window_x,
+                right=window_x + window_w,
+                bottom=window_y,
+                top=window_y + window_h,
+                color=arcade.color.YELLOW
+            )
+        title = arcade.Text(
+            "ЗАМОК САМУРАЯ",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT - 150,
+            arcade.color.GOLD,
+            64,
+            align="center",
+            anchor_x="center",
+            anchor_y="center",
+            bold=True
+        )
+        subtitle = arcade.Text(
+            "Начни свое приключение!",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT - 220,
+            arcade.color.LIGHT_GRAY,
+            28,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        for i, item in enumerate(self.menu_items):
+            if i == self.menu_choice:
+                color = arcade.color.GOLD
+            else:
+                color = arcade.color.WHITE
+            size = 48 if i == self.menu_choice else 36
+            text = arcade.Text(
+                item,
+                SCREEN_WIDTH // 2,
+                SCREEN_HEIGHT // 2 - i * 60,
+                color,
+                size,
+                align="center",
+                anchor_x="center",
+                anchor_y="center",
+                bold=(i == self.menu_choice)
+            )
+            text.draw()
+        if int(self.blink_timer * 2) % 2 == 0:
+            hint = arcade.Text(
+                "Стрелки ВВЕРХ/ВНИЗ для выбора, ENTER для подтверждения",
+                SCREEN_WIDTH // 2,
+                100,
+                arcade.color.LIGHT_GRAY,
+                22,
+                align="center",
+                anchor_x="center",
+                anchor_y="center"
+            )
+            hint.draw()
+        controls = arcade.Text(
+            "В игре: <- -> движение, SPACE прыжок",
+            SCREEN_WIDTH // 2,
+            60,
+            arcade.color.LIGHT_GRAY,
+            20,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        title.draw()
+        subtitle.draw()
+        controls.draw()
 
     def draw_scores(self):
         arcade.draw_lrbt_rectangle_filled(0, SCREEN_WIDTH, 0, SCREEN_HEIGHT, arcade.color.DARK_SLATE_BLUE)
@@ -256,14 +355,13 @@ class MyGame(arcade.Window):
 
         top = SCREEN_HEIGHT // 2 + 50
         bottom = SCREEN_HEIGHT // 2 - 50
-        if bottom < top:
-            arcade.draw_lrbt_rectangle_outline(SCREEN_WIDTH // 2 - 250, SCREEN_WIDTH // 2 + 250, bottom, top,
-                                               arcade.color.WHITE, 3)
+        arcade.draw_lrbt_rectangle_outline(SCREEN_WIDTH // 2 - 250, SCREEN_WIDTH // 2 + 250, bottom, top,
+                                           arcade.color.WHITE, 3)
 
         arcade.Text(self.player_name, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, arcade.color.WHITE, 42,
                     anchor_x="center").draw()
 
-        if int(self.blink * 2) % 2 == 0:
+        if int(self.blink_timer * 2) % 2 == 0:
             x = SCREEN_WIDTH // 2 - 100 + (len(self.player_name) * 18)
             arcade.draw_line(x, SCREEN_HEIGHT // 2 - 25, x, SCREEN_HEIGHT // 2 + 25, arcade.color.YELLOW, 3)
 
@@ -275,109 +373,312 @@ class MyGame(arcade.Window):
                     arcade.color.LIGHT_GRAY, 22, anchor_x="center").draw()
         arcade.Text("BACKSPACE - удалить | ENTER - сохранить", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 180,
                     arcade.color.LIGHT_GRAY, 22, anchor_x="center").draw()
-        arcade.Text(f"Ваш результат: {self.score} очков", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 120,
+        arcade.Text(f"Ваш результат: {self.score_saved} очков", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 120,
                     arcade.color.GREEN, 28, anchor_x="center").draw()
 
-    def draw_levels(self):
-        arcade.draw_lrbt_rectangle_filled(0, SCREEN_WIDTH, 0, SCREEN_HEIGHT, arcade.color.DARK_SLATE_GRAY)
-        arcade.Text("ВЫБЕРИ УРОВЕНЬ", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100, arcade.color.GOLD, 48, bold=True,
-                    anchor_x="center").draw()
-
+    def draw_level_choice(self):
+        arcade.draw_lrbt_rectangle_filled(
+            0, SCREEN_WIDTH,
+            0, SCREEN_HEIGHT,
+            arcade.color.DARK_SLATE_GRAY
+        )
+        title = arcade.Text(
+            "ВЫБЕРИ УРОВЕНЬ",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT - 100,
+            arcade.color.GOLD,
+            48,
+            align="center",
+            anchor_x="center",
+            anchor_y="center",
+            bold=True
+        )
         stats = db.get_my_stats()
-        max_open = stats['best_level'] if stats else 1
+        max_open = stats['best_level'] if stats else self.current_level
 
         for i in range(1, self.max_levels + 1):
             x = SCREEN_WIDTH // 2 + (i - 5) * 100
             y = SCREEN_HEIGHT // 2
-
             if i <= max_open:
-                color = arcade.color.GREEN if i <= self.level else arcade.color.YELLOW
-                border = arcade.color.GOLD if i == self.level else arcade.color.WHITE
-                arcade.draw_lrbt_rectangle_filled(x - 30, x + 30, y - 20, y + 20, color)
-                arcade.draw_lrbt_rectangle_outline(x - 30, x + 30, y - 20, y + 20, border, 3)
-                arcade.Text(str(i), x, y, arcade.color.WHITE, 24, bold=True, anchor_x="center").draw()
+                color = arcade.color.GREEN if i <= self.current_level else arcade.color.YELLOW
+                border = arcade.color.GOLD if i == self.current_level else arcade.color.WHITE
+                arcade.draw_lrbt_rectangle_filled(
+                    left=x - 30,
+                    right=x + 30,
+                    bottom=y - 20,
+                    top=y + 20,
+                    color=color
+                )
+                arcade.draw_lrbt_rectangle_outline(
+                    left=x - 30,
+                    right=x + 30,
+                    bottom=y - 20,
+                    top=y + 20,
+                    color=border,
+                    border_width=3
+                )
+                num = arcade.Text(
+                    str(i),
+                    x,
+                    y,
+                    arcade.color.WHITE,
+                    24,
+                    align="center",
+                    anchor_x="center",
+                    anchor_y="center",
+                    bold=True
+                )
+                num.draw()
             else:
-                arcade.draw_lrbt_rectangle_filled(x - 30, x + 30, y - 20, y + 20, arcade.color.DARK_GRAY)
-                arcade.draw_lrbt_rectangle_outline(x - 30, x + 30, y - 20, y + 20, arcade.color.GRAY, 2)
-                arcade.Text("✗", x, y, arcade.color.GRAY, 24, anchor_x="center").draw()
+                arcade.draw_lrbt_rectangle_filled(
+                    left=x - 30,
+                    right=x + 30,
+                    bottom=y - 20,
+                    top=y + 20,
+                    color=arcade.color.DARK_GRAY
+                )
+                arcade.draw_lrbt_rectangle_outline(
+                    left=x - 30,
+                    right=x + 30,
+                    bottom=y - 20,
+                    top=y + 20,
+                    color=arcade.color.GRAY,
+                    border_width=2
+                )
+                lock = arcade.Text(
+                    "✗",
+                    x,
+                    y,
+                    arcade.color.GRAY,
+                    24,
+                    align="center",
+                    anchor_x="center",
+                    anchor_y="center"
+                )
+                lock.draw()
 
         arcade.Text(f"Максимальный пройденный: {max_open}", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 100,
                     arcade.color.LIGHT_GRAY, 28, anchor_x="center").draw()
 
-        if int(self.blink * 2) % 2 == 0:
-            arcade.Text("Цифры 1-10 для выбора уровня или ESC для возврата", SCREEN_WIDTH // 2, 100,
-                        arcade.color.LIGHT_GRAY, 22, anchor_x="center").draw()
+        if int(self.blink_timer * 2) % 2 == 0:
+            hint = arcade.Text(
+                "Цифры 1-10 для выбора уровня или ESC для возврата",
+                SCREEN_WIDTH // 2,
+                100,
+                arcade.color.LIGHT_GRAY,
+                22,
+                align="center",
+                anchor_x="center",
+                anchor_y="center"
+            )
+            hint.draw()
+        title.draw()
 
-    def draw_info(self):
-        arcade.Text(f"ЖИЗНИ: {self.hero.lives}", 20, SCREEN_HEIGHT - 40, arcade.color.RED, 28, bold=True).draw()
-        arcade.Text(f"МОНЕТЫ: {self.hero.coins}", 20, SCREEN_HEIGHT - 80, arcade.color.YELLOW, 24).draw()
-        arcade.Text(f"ОЧКИ: {self.hero.score}", SCREEN_WIDTH - 200, SCREEN_HEIGHT - 40, arcade.color.WHITE, 28).draw()
-        arcade.Text(f"УРОВЕНЬ: {self.level}", SCREEN_WIDTH - 200, SCREEN_HEIGHT - 80, arcade.color.GREEN, 24).draw()
+    def draw_stats_info(self):
+        lives = arcade.Text(
+            f"ЖИЗНИ: {self.hero.lives}",
+            20,
+            SCREEN_HEIGHT - 40,
+            arcade.color.RED,
+            28,
+            bold=True
+        )
+        coins = arcade.Text(
+            f"МОНЕТЫ: {self.hero.coins}",
+            20,
+            SCREEN_HEIGHT - 80,
+            arcade.color.YELLOW,
+            24
+        )
+        score = arcade.Text(
+            f"ОЧКИ: {self.hero.score}",
+            SCREEN_WIDTH - 200,
+            SCREEN_HEIGHT - 40,
+            arcade.color.WHITE,
+            28
+        )
+        level = arcade.Text(
+            f"УРОВЕНЬ: {self.current_level}",
+            SCREEN_WIDTH - 200,
+            SCREEN_HEIGHT - 80,
+            arcade.color.GREEN,
+            24
+        )
+        lives.draw()
+        coins.draw()
+        score.draw()
+        level.draw()
 
-    def draw_lose(self):
-        arcade.draw_lrbt_rectangle_filled(0, SCREEN_WIDTH, 0, SCREEN_HEIGHT, (0, 0, 0, 180))
-        arcade.Text("ПОРАЖЕНИЕ", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50, arcade.color.RED, 48, bold=True,
-                    anchor_x="center").draw()
-        arcade.Text(f"Очки: {self.hero.score}", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, arcade.color.YELLOW, 32,
-                    anchor_x="center").draw()
-        arcade.Text(f"Монет: {self.hero.coins}", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30, arcade.color.YELLOW, 28,
-                    anchor_x="center").draw()
-        arcade.Text("R - начать заново", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80, arcade.color.WHITE, 24,
-                    anchor_x="center").draw()
-        arcade.Text("ESC - в меню", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 120, arcade.color.LIGHT_GRAY, 20,
-                    anchor_x="center").draw()
+    def draw_lose_screen(self):
+        arcade.draw_lrbt_rectangle_filled(
+            left=0,
+            right=SCREEN_WIDTH,
+            bottom=0,
+            top=SCREEN_HEIGHT,
+            color=(0, 0, 0, 180)
+        )
+        lose = arcade.Text(
+            "ПОРАЖЕНИЕ",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 + 50,
+            arcade.color.RED,
+            48,
+            align="center",
+            anchor_x="center",
+            anchor_y="center",
+            bold=True
+        )
+        score = arcade.Text(
+            f"Очки: {self.hero.score}",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2,
+            arcade.color.YELLOW,
+            32,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        coins_text = arcade.Text(
+            f"Монет: {self.hero.coins}",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 - 30,
+            arcade.color.YELLOW,
+            28,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        restart = arcade.Text(
+            "R - начать заново",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 - 80,
+            arcade.color.WHITE,
+            24,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        menu = arcade.Text(
+            "ESC - в меню",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 - 120,
+            arcade.color.LIGHT_GRAY,
+            20,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        lose.draw()
+        score.draw()
+        coins_text.draw()
+        restart.draw()
+        menu.draw()
 
-    def draw_win(self):
-        arcade.draw_lrbt_rectangle_filled(0, SCREEN_WIDTH, 0, SCREEN_HEIGHT, (0, 50, 0, 150))
-        arcade.Text(f"УРОВЕНЬ {self.level} ПРОЙДЕН!", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 80, arcade.color.GOLD, 48,
-                    bold=True, anchor_x="center").draw()
-        arcade.Text(f"Очки: {self.hero.score}", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30, arcade.color.YELLOW, 32,
-                    anchor_x="center").draw()
-        arcade.Text(f"Монет: {self.hero.coins}", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 10, arcade.color.YELLOW, 28,
-                    anchor_x="center").draw()
-        arcade.Text("SPACE - следующий уровень", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 60, arcade.color.WHITE, 24,
-                    anchor_x="center").draw()
-        arcade.Text("ESC - в меню", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 100, arcade.color.LIGHT_GRAY, 20,
-                    anchor_x="center").draw()
+    def draw_win_screen(self):
+        arcade.draw_lrbt_rectangle_filled(
+            left=0,
+            right=SCREEN_WIDTH,
+            bottom=0,
+            top=SCREEN_HEIGHT,
+            color=(0, 50, 0, 150)
+        )
+        win = arcade.Text(
+            f"УРОВЕНЬ {self.current_level} ПРОЙДЕН!",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 + 80,
+            arcade.color.GOLD,
+            48,
+            align="center",
+            anchor_x="center",
+            anchor_y="center",
+            bold=True
+        )
+        score = arcade.Text(
+            f"Очки: {self.hero.score}",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 + 30,
+            arcade.color.YELLOW,
+            32,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        coins = arcade.Text(
+            f"Монет: {self.hero.coins}",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 - 10,
+            arcade.color.YELLOW,
+            28,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        next_level = arcade.Text(
+            "SPACE - следующий уровень",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 - 60,
+            arcade.color.WHITE,
+            24,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        menu = arcade.Text(
+            "ESC - в меню",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 - 100,
+            arcade.color.LIGHT_GRAY,
+            20,
+            align="center",
+            anchor_x="center",
+            anchor_y="center"
+        )
+        win.draw()
+        score.draw()
+        coins.draw()
+        next_level.draw()
+        menu.draw()
 
     def check_ground(self):
         old_x = self.hero.center_x
         old_y = self.hero.center_y
         self.hero.center_x += self.hero.speed_x
-        if arcade.check_for_collision_with_list(self.hero, self.world.ground):
+        hit_x = arcade.check_for_collision_with_list(self.hero, self.world.ground)
+        if hit_x:
             self.hero.center_x = old_x
             self.hero.speed_x = 0
-
         self.hero.center_y += self.hero.speed_y
-        hit = arcade.check_for_collision_with_list(self.hero, self.world.ground)
-        on_ground = False
-
-        for p in hit:
-            if self.hero.speed_y <= 0 and self.hero.bottom <= p.top + 5:
-                if abs(self.hero.bottom - p.top) < 15:
-                    self.hero.bottom = p.top + 1
+        hit_y = arcade.check_for_collision_with_list(self.hero, self.world.ground)
+        on_floor = False
+        on_moving = False
+        for platform in hit_y:
+            if self.hero.speed_y <= 0 and self.hero.bottom <= platform.top + 5:
+                if abs(self.hero.bottom - platform.top) < 15:
+                    self.hero.bottom = platform.top + 1
                     self.hero.speed_y = 0
                     self.hero.jumps_done = 0
-                    on_ground = True
-                    if self.world.moving_platform and p == self.world.moving_platform:
-                        move = self.world.moving_platform.move_speed * self.world.moving_platform.direction
-                        self.hero.center_x += move
-                        self.camera_x += move * 0.05
+                    on_floor = True
+                    if (self.world.moving_platform and
+                            platform == self.world.moving_platform):
+                        on_moving = True
                     break
-            elif self.hero.speed_y > 0 and self.hero.top >= p.bottom - 5:
-                self.hero.top = p.bottom - 1
+            elif self.hero.speed_y > 0 and self.hero.top >= platform.bottom - 5:
+                self.hero.top = platform.bottom - 1
                 self.hero.speed_y = 0
                 break
-
-        if arcade.check_for_collision_with_list(self.hero, self.world.ground) and not on_ground:
+        if on_moving and on_floor and self.world.moving_platform:
+            plat = self.world.moving_platform
+            move = plat.move_speed * plat.direction
+            self.hero.center_x += move
+            self.camera_x += move * 0.05
+        if arcade.check_for_collision_with_list(self.hero, self.world.ground) and not on_floor:
             self.hero.center_y = old_y
             self.hero.speed_y = 0
 
     def on_update(self, delta):
-        self.blink += delta
-        if self.screen != "game":
+        self.blink_timer += delta
+        if self.current_screen != "game":
             return
-
         if self.can_move:
             if self.key_left and not self.key_right:
                 self.hero.go_left()
@@ -387,103 +688,104 @@ class MyGame(arcade.Window):
                 self.hero.speed_x *= 0.8
                 if abs(self.hero.speed_x) < 0.5:
                     self.hero.speed_x = 0
-
         self.hero.update(delta)
         if self.world:
             self.world.update_moving(delta)
-
         self.check_ground()
-
         if self.hero.jump_buffer > 0 and self.hero.jumps_done == 0:
             self.hero.jump()
-
         self.world.monsters.update(delta)
         self.world.treasure.update(delta)
         self.world.potions.update(delta)
         if self.world.exit:
             self.world.exit.update(delta)
-
-        self.check_collisions()
+        self.check_hits()
         self.move_camera()
-        self.check_game_state()
+        self.check_state()
 
-    def check_collisions(self):
-        coins_hit = arcade.check_for_collision_with_list(self.hero, self.world.treasure)
+    def check_traps(self):
+        trap_hit = arcade.check_for_collision_with_list(self.hero, self.world.traps)
+        for trap in trap_hit:
+            if self.hero.invincible <= 0:
+                if self.hero.center_x < trap.center_x:
+                    push_x = -10
+                else:
+                    push_x = 10
+                if self.hero.center_y < trap.center_y:
+                    push_y = 5
+                else:
+                    push_y = -5
+                self.hero.get_hit(trap.damage, push_x, push_y)
+                if self.hit_sound:
+                    arcade.play_sound(self.hit_sound)
+                return
+
+    def check_hits(self):
+        coins_hit = arcade.check_for_collision_with_list(
+            self.hero, self.world.treasure
+        )
         for coin in coins_hit:
             coin.remove_from_sprite_lists()
             self.hero.add_coin()
-            self.coins = self.hero.coins
-            self.score = self.hero.score
-
-        hearts_hit = arcade.check_for_collision_with_list(self.hero, self.world.potions)
-        for heart in hearts_hit:
-            heart.remove_from_sprite_lists()
-            self.hero.heal(heart.value)
-
-        monsters_hit = arcade.check_for_collision_with_list(self.hero, self.world.monsters)
+            self.coins_saved = self.hero.coins
+            self.score_saved = self.hero.score
+        potions_hit = arcade.check_for_collision_with_list(
+            self.hero, self.world.potions
+        )
+        for potion in potions_hit:
+            potion.remove_from_sprite_lists()
+            self.hero.heal(potion.value)
+        monsters_hit = arcade.check_for_collision_with_list(
+            self.hero, self.world.monsters
+        )
         for monster in monsters_hit:
             if self.hero.invincible <= 0:
                 push = 15 if monster.center_x < self.hero.center_x else -15
                 self.hero.get_hit(monster.damage, push)
-                try:
+                if self.hit_sound:
                     arcade.play_sound(self.hit_sound)
-                except:
-                    ...
-
-        traps_hit = arcade.check_for_collision_with_list(self.hero, self.world.traps)
-        for trap in traps_hit:
-            if self.hero.invincible <= 0:
-                push_x = -10 if self.hero.center_x < trap.center_x else 10
-                push_y = 5 if self.hero.center_y < trap.center_y else -5
-                self.hero.get_hit(trap.damage, push_x, push_y)
-                try:
-                    arcade.play_sound(self.hit_sound)
-                except:
-                    ...
-
+        self.check_traps()
         for monster in self.world.monsters:
-            if arcade.check_for_collision_with_list(monster, self.world.traps):
+            monster_traps = arcade.check_for_collision_with_list(monster, self.world.traps)
+            if monster_traps:
                 monster.remove_from_sprite_lists()
-
         if self.world.exit:
             if arcade.check_for_collision(self.hero, self.world.exit):
-                self.screen = "win"
+                self.current_screen = "win"
                 self.can_move = False
                 self.hero.speed_x = 0
-                self.coins = self.hero.coins
-                self.score = self.hero.score
+                self.coins_saved = self.hero.coins
+                self.score_saved = self.hero.score
 
-                db.save_game_result(self.level, self.hero.coins, self.hero.score)
-                if self.hero.score > 0:
-                    db.add_score("ИГРОК", self.hero.score, self.level, self.hero.coins)
+                db.save_game_result(self.current_level, self.hero.coins, self.hero.score)
+                if self.hero.score > 0 and not self.enter_name:
+                    self.enter_name = True
 
-    def check_game_state(self):
+    def check_state(self):
         if self.hero.lives <= 0:
-            self.coins = self.hero.coins
-            self.score = self.hero.score
-            self.screen = "lose"
+            self.coins_saved = self.hero.coins
+            self.score_saved = self.hero.score
+            self.current_screen = "lose"
 
-            db.save_game_result(self.level, self.hero.coins, self.hero.score)
-            if self.hero.score > 0:
-                db.add_score("ИГРОК", self.hero.score, self.level, self.hero.coins)
+            db.save_game_result(self.current_level, self.hero.coins, self.hero.score)
+            if self.hero.score > 0 and not self.enter_name:
+                self.enter_name = True
 
         if self.hero.center_y < -100:
             self.hero.get_hit(999)
 
     def on_key_press(self, key, mod):
-        if self.screen == "menu":
+        if self.current_screen == "menu":
             if self.show_scores:
                 if key == arcade.key.ESCAPE:
                     self.show_scores = False
                 return
-
             elif self.show_stats:
                 if key == arcade.key.ESCAPE:
                     self.show_stats = False
                 elif key == arcade.key.ENTER:
                     db.clear_all()
                 return
-
             elif self.enter_name:
                 if key == arcade.key.LEFT:
                     self.letter_index = (self.letter_index - 1) % len(self.letters)
@@ -496,7 +798,7 @@ class MyGame(arcade.Window):
                         self.player_name = self.player_name[:-1]
                 elif key == arcade.key.ENTER:
                     if self.player_name.strip():
-                        db.add_score(self.player_name, self.score, self.level, self.coins)
+                        db.add_score(self.player_name, self.score_saved, self.current_level, self.coins_saved)
                         self.enter_name = False
                         self.show_scores = True
                 elif key == arcade.key.ESCAPE:
@@ -504,45 +806,45 @@ class MyGame(arcade.Window):
                 return
 
             if key == arcade.key.UP:
-                self.menu_selected = (self.menu_selected - 1) % len(self.menu_options)
+                self.menu_choice = (self.menu_choice - 1) % len(self.menu_items)
             elif key == arcade.key.DOWN:
-                self.menu_selected = (self.menu_selected + 1) % len(self.menu_options)
+                self.menu_choice = (self.menu_choice + 1) % len(self.menu_items)
             elif key == arcade.key.ENTER:
-                if self.menu_selected == 0:
-                    self.screen = "choose_level"
-                elif self.menu_selected == 1:
+                if self.menu_choice == 0:
+                    self.current_screen = "choose_level"
+                elif self.menu_choice == 1:
                     self.show_scores = True
-                elif self.menu_selected == 2:
+                elif self.menu_choice == 2:
                     self.show_stats = True
-                elif self.menu_selected == 3:
+                elif self.menu_choice == 3:
                     arcade.close_window()
             elif key == arcade.key.ESCAPE:
                 arcade.close_window()
             return
 
-        elif self.screen == "choose_level":
+        elif self.current_screen == "choose_level":
             if key == arcade.key.ESCAPE:
-                self.screen = "menu"
+                self.current_screen = "menu"
             elif key in [arcade.key.KEY_1, arcade.key.KEY_2, arcade.key.KEY_3,
                          arcade.key.KEY_4, arcade.key.KEY_5, arcade.key.KEY_6,
                          arcade.key.KEY_7, arcade.key.KEY_8, arcade.key.KEY_9]:
-                lvl = key - arcade.key.KEY_0
+                level = key - arcade.key.KEY_0
                 stats = db.get_my_stats()
-                max_open = stats['best_level'] if stats else 1
-                if lvl <= max_open:
-                    self.level = lvl
-                    self.start_game()
-                    self.screen = "game"
+                max_open = stats['best_level'] if stats else self.current_level
+                if level <= max_open:
+                    self.current_level = level
+                    self.init_game()
+                    self.current_screen = "game"
             elif key == arcade.key.KEY_0 or key == arcade.key.NUM_0:
-                self.level = 10
+                self.current_level = 10
                 stats = db.get_my_stats()
-                max_open = stats['best_level'] if stats else 1
+                max_open = stats['best_level'] if stats else self.current_level
                 if 10 <= max_open:
-                    self.start_game()
-                    self.screen = "game"
+                    self.init_game()
+                    self.current_screen = "game"
             return
 
-        elif self.screen == "game":
+        elif self.current_screen == "game":
             if key == arcade.key.LEFT or key == arcade.key.A:
                 self.key_left = True
             elif key == arcade.key.RIGHT or key == arcade.key.D:
@@ -551,26 +853,26 @@ class MyGame(arcade.Window):
                 if self.hero.jump():
                     self.key_up = True
             elif key == arcade.key.ESCAPE:
-                self.screen = "menu"
+                self.current_screen = "menu"
             elif key == arcade.key.R:
-                self.start_game()
+                self.init_game()
 
-        elif self.screen == "lose":
+        elif self.current_screen == "lose":
             if key == arcade.key.R:
-                self.start_game()
+                self.init_game()
             elif key == arcade.key.ESCAPE:
-                self.screen = "menu"
+                self.current_screen = "menu"
 
-        elif self.screen == "win":
+        elif self.current_screen == "win":
             if key == arcade.key.SPACE:
-                if self.level < self.max_levels:
-                    self.level += 1
-                self.start_game()
+                if self.current_level < self.max_levels:
+                    self.current_level += 1
+                self.init_game()
             elif key == arcade.key.ESCAPE:
-                self.screen = "menu"
+                self.current_screen = "menu"
 
     def on_key_release(self, key, mod):
-        if self.screen == "game":
+        if self.current_screen == "game":
             if key == arcade.key.LEFT or key == arcade.key.A:
                 self.key_left = False
             elif key == arcade.key.RIGHT or key == arcade.key.D:
