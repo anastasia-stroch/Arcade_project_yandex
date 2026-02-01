@@ -3,12 +3,27 @@ from constants import *
 
 
 class Hero(arcade.Sprite):
-    def __init__(self):
+    def __init__(self, skin_selected=0):
+        self.skin_selected = skin_selected
         self.textures_list = []
-        for i in range(1, 7):
-            texture_path = f"textures/Running_hero{i}.png"
-            texture = arcade.load_texture(texture_path)
-            self.textures_list.append(texture)
+        self.flipped_textures = []
+        if self.skin_selected == 1:
+            print("scin selected")
+            for i in range(1, 7):
+                texture_path = f"textures/Running_hero{i}b.png"
+                texture = arcade.load_texture(texture_path)
+                self.textures_list.append(texture)
+                texture_path = f"textures/Running_hero{i}b (1).png"
+                texture = arcade.load_texture(texture_path)
+                self.flipped_textures.append(texture)
+        else:
+            for i in range(1, 7):
+                texture_path = f"textures/Running_hero{i}.png"
+                texture = arcade.load_texture(texture_path)
+                self.textures_list.append(texture)
+                texture_path = f"textures/Running_hero{i} (1).png"
+                texture = arcade.load_texture(texture_path)
+                self.flipped_textures.append(texture)
         super().__init__(self.textures_list[0])
         self.base_width = 100
         self.base_height = 100
@@ -43,14 +58,6 @@ class Hero(arcade.Sprite):
 
         self.current_state = "idle"
         self.is_moving = False
-
-        self.flipped_textures = []
-        for i in range(1, 7):
-            texture_path = f"textures/Running_hero{i} (1).png"
-            texture = arcade.load_texture(texture_path)
-            self.flipped_textures.append(texture)
-
-        self.set_texture_simple(0)
 
     def update(self, delta: float = 1 / 60):
         self.speed_y -= GRAVITY * delta * 60
