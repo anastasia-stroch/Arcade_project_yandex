@@ -14,7 +14,6 @@ class MyGame(arcade.Window):
         self.current_level = 1
         self.max_levels = 10
 
-        self.hero = None
         self.hero_group = None
         self.world = None
 
@@ -29,7 +28,10 @@ class MyGame(arcade.Window):
         self.blink_timer = 0
 
         self.menu_choice = 0
-        self.menu_items = ["НАЧАТЬ", "РЕКОРДЫ", "СТАТИСТИКА", "ВЫЙТИ"]
+        self.menu_items = ["НАЧАТЬ", "СКИНЫ", "РЕКОРДЫ", "СТАТИСТИКА", "ВЫЙТИ"]
+        self.show_skins = False
+        self.skin_selected = 0
+        self.skins = ["СИНИЙ СКИН"]
 
         self.show_scores = False
         self.show_stats = False
@@ -57,7 +59,7 @@ class MyGame(arcade.Window):
         self.key_left = False
         self.key_right = False
         self.key_up = False
-        self.hero = Hero()
+        self.hero = Hero(skin_selected=self.skin_selected)
         self.hero.coins = self.coins_saved
         self.hero.score = self.score_saved
         self.hero_group = arcade.SpriteList()
@@ -72,17 +74,14 @@ class MyGame(arcade.Window):
 
         self.background_list = arcade.SpriteList()
         random_num = random.randint(0, 3)
-        try:
-            if random_num == 0:
-                bg_texture = arcade.load_texture("tileset.png")
-            elif random_num == 1:
-                bg_texture = arcade.load_texture("tileset1.png")
-            elif random_num == 2:
-                bg_texture = arcade.load_texture("tileset2.png")
-            elif random_num == 3:
-                bg_texture = arcade.load_texture("tileset3.png")
-        except:
-            bg_texture = arcade.make_soft_square_texture(64, arcade.color.DARK_BROWN)
+        if random_num == 0:
+            bg_texture = arcade.load_texture("tileset.png")
+        elif random_num == 1:
+            bg_texture = arcade.load_texture("tileset1.png")
+        elif random_num == 2:
+            bg_texture = arcade.load_texture("tileset2.png")
+        elif random_num == 3:
+            bg_texture = arcade.load_texture("tileset3.png")
 
         texture_width = bg_texture.width
         texture_height = bg_texture.height
@@ -113,6 +112,8 @@ class MyGame(arcade.Window):
                 self.draw_scores()
             elif self.show_stats:
                 self.draw_stats()
+            elif self.show_skins:
+                self.draw_skins()
             elif self.enter_name:
                 self.draw_name_input()
             else:
@@ -574,6 +575,20 @@ class MyGame(arcade.Window):
         restart.draw()
         menu.draw()
 
+    def draw_skins(self):
+        arcade.draw_lrbt_rectangle_filled(0, SCREEN_WIDTH, 0, SCREEN_HEIGHT, arcade.color.DARK_BLUE_GRAY)
+        arcade.Text("ВЫБЕРИТЕ СКИН", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100, arcade.color.GOLD, 48, bold=True,
+                    anchor_x="center").draw()
+        x = SCREEN_WIDTH // 2
+        y = SCREEN_HEIGHT // 2
+        color = arcade.color.GOLD
+        arcade.draw_lrbt_rectangle_filled(x - 200, x + 200, y - 40, y + 40, color)
+        arcade.Text("СИНИЙ СКИН", x, y, arcade.color.BLACK,
+                    32, bold=True, anchor_x="center").draw()
+        arcade.Text("ENTER - выбрать, ESC - назад",
+                    SCREEN_WIDTH // 2, 100, arcade.color.LIGHT_GRAY,
+                    22, anchor_x="center").draw()
+
     def draw_win_screen(self):
         arcade.draw_lrbt_rectangle_filled(
             left=0,
@@ -780,12 +795,21 @@ class MyGame(arcade.Window):
                 if key == arcade.key.ESCAPE:
                     self.show_scores = False
                 return
+
             elif self.show_stats:
                 if key == arcade.key.ESCAPE:
                     self.show_stats = False
                 elif key == arcade.key.ENTER:
                     db.clear_all()
                 return
+
+            elif self.show_skins:
+                if key == arcade.key.ESCAPE:
+                    self.show_skins = False
+                elif key == arcade.key.ENTER:
+                    self.skin_selected = 1
+                return
+
             elif self.enter_name:
                 if key == arcade.key.LEFT:
                     self.letter_index = (self.letter_index - 1) % len(self.letters)
@@ -813,13 +837,13 @@ class MyGame(arcade.Window):
                 if self.menu_choice == 0:
                     self.current_screen = "choose_level"
                 elif self.menu_choice == 1:
-                    self.show_scores = True
+                    self.show_skins = True
                 elif self.menu_choice == 2:
-                    self.show_stats = True
+                    self.show_scores = True
                 elif self.menu_choice == 3:
+                    self.show_stats = True
+                elif self.menu_choice == 4:
                     arcade.close_window()
-            elif key == arcade.key.ESCAPE:
-                arcade.close_window()
             return
 
         elif self.current_screen == "choose_level":
@@ -888,3 +912,4 @@ def start_game():
 
 if __name__ == "__main__":
     start_game()
+
