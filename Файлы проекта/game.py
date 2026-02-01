@@ -43,14 +43,9 @@ class MyGame(arcade.Window):
         self.background_list = None
         self.music = None
         self.hit_sound = None
-
-        try:
-            self.music = arcade.load_sound("music.mp3")
-            arcade.play_sound(self.music, volume=0.2, loop=True)
-            self.hit_sound = arcade.load_sound("hit.mp3")
-        except:
-            pass
-
+        self.music = arcade.load_sound("music.mp3")
+        arcade.play_sound(self.music, volume=0.2, loop=True)
+        self.hit_sound = arcade.load_sound("hit.mp3")
         stats = db.get_my_stats()
         if stats and stats['best_level'] > self.max_levels:
             self.max_levels = stats['best_level']
@@ -59,7 +54,7 @@ class MyGame(arcade.Window):
         self.key_left = False
         self.key_right = False
         self.key_up = False
-        self.hero = Hero(skin_selected=self.skin_selected)
+        self.hero = Hero(self.skin_selected)
         self.hero.coins = self.coins_saved
         self.hero.score = self.score_saved
         self.hero_group = arcade.SpriteList()
