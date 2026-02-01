@@ -5,15 +5,11 @@ from constants import *
 class Hero(arcade.Sprite):
     def __init__(self):
         self.textures_list = []
-
         for i in range(1, 7):
             texture_path = f"textures/Running_hero{i}.png"
             texture = arcade.load_texture(texture_path)
             self.textures_list.append(texture)
-            print(f"✓ Загружена текстура {i}/6")
-
         super().__init__(self.textures_list[0])
-
         self.base_width = 100
         self.base_height = 100
 
@@ -49,21 +45,12 @@ class Hero(arcade.Sprite):
         self.is_moving = False
 
         self.flipped_textures = []
-        self.create_flipped_textures()
+        for i in range(1, 7):
+            texture_path = f"textures/Running_hero{i} (1).png"
+            texture = arcade.load_texture(texture_path)
+            self.flipped_textures.append(texture)
 
         self.set_texture_simple(0)
-
-    def create_flipped_textures(self):
-        for texture in self.textures_list:
-            try:
-                flipped = arcade.Texture(
-                    f"{texture.name}_flipped",
-                    texture.image.transpose(1),
-                    hit_box_algorithm="Simple"
-                )
-                self.flipped_textures.append(flipped)
-            except:
-                self.flipped_textures.append(texture)
 
     def update(self, delta: float = 1 / 60):
         self.speed_y -= GRAVITY * delta * 60
